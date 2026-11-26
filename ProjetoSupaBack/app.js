@@ -36,23 +36,42 @@ const supabase =
         'sb_publishable_rzvOY8Aff4oShXP9YH4X9Q_mzaiK76l')
 
 
+const sendError = (res, error, status = 400) =>
+    res.status(status).json({error: error.message});
+
 app.get('/products', async (req, res) => {
     const {data, error} = await supabase
         .from('products')
         .select()
-    res.send(data);
-    console.log(`lists all products${data}`);
+        .order('id');
+    if (error) return sendError(res, error, 500);
+    res.json(data);
 });
 
-app.get('/products/:id', async (req, res) => {
-    console.log("id = " + req.params.id);
+app.get('/products/search', async (req, res) => {
+    const term = String(req.query.name || '').trim();
+    if (!term) return res.json([]);
+    // escape the LIKE wildcards typed by the user
+    const safe = term.replace(/[\\%_]/g, '\\$&');
     const {data, error} = await supabase
         .from('products')
         .select()
-        .eq('id', req.params.id)
-    res.send(data);
+        .ilike('name', `%${safe}%`)
+        .order('id');
+    if (error) return sendError(res, error, 500);
+    res.json(data);
+});
 
-    console.log("retorno "+ data);
+app.get('/products/:id', async (req, res) => {
+    const {data, error} = await supabase
+        .from('products')
+        .select()
+        .eq('id', req.params.id);
+    if (error) return sendError(res, error, 500);
+    if (!data || data.length === 0) {
+        return res.status(404).json({error: 'Product not found'});
+    }
+    res.json(data);
 });
 
 app.post('/products', async (req, res) => {
@@ -62,19 +81,13 @@ app.post('/products', async (req, res) => {
             name: req.body.name,
             description: req.body.description,
             price: req.body.price,
-        })
-    if (error) {
-        res.send(error);
-    }
-    res.send("created!!");
-    console.log("retorno "+ req.body.name);
-    console.log("retorno "+ req.body.description);
-    console.log("retorno "+ req.body.price);
-
+        });
+    if (error) return sendError(res, error);
+    res.status(201).json({message: 'created'});
 });
 
 app.put('/products/:id', async (req, res) => {
-    const {error} = await supabase
+    const {data, error} = await supabase
         .from('products')
         .update({
             name: req.body.name,
@@ -82,24 +95,25 @@ app.put('/products/:id', async (req, res) => {
             price: req.body.price
         })
         .eq('id', req.params.id)
-    if (error) {
-        res.send(error);
+        .select();
+    if (error) return sendError(res, error);
+    if (!data || data.length === 0) {
+        return res.status(404).json({error: 'Product not found (or update blocked by the table policy)'});
     }
-    res.send("updated!!");
+    res.json({message: 'updated'});
 });
 
 app.delete('/products/:id', async (req, res) => {
-    console.log("delete: " + req.params.id);
-    const {error} = await supabase
+    const {data, error} = await supabase
         .from('products')
         .delete()
         .eq('id', req.params.id)
-    if (error) {
-        res.send(error);
+        .select();
+    if (error) return sendError(res, error);
+    if (!data || data.length === 0) {
+        return res.status(404).json({error: 'Product not found (or delete blocked by the table policy)'});
     }
-    res.send("deleted!!")
-    console.log("delete: " + req.params.id);
-
+    res.json({message: 'deleted'});
 });
 
 app.get('/', (req, res) => {
